@@ -1,31 +1,31 @@
-/*********************************************************************
-This is an example sketch for our Monochrome Nokia 5110 LCD Displays
+#include <Arduino.h>
 
-  Pick one up today in the adafruit shop!
-  ------> http://www.adafruit.com/products/338
+/********************
+Sept. 2014 ~ Oct 2017 Rui Azevedo - ruihfazevedo(@rrob@)gmail.com
 
-These displays use SPI to communicate, 4 or 5 pins are required to
-interface
+menu with adafruit GFX
+output: Nokia 5110 display (PCD8544 HW SPI) + Serial
+input: Encoder + Serial
+www.r-site.net
 
-Adafruit invests time and resources providing this open source code,
-please support Adafruit and open-source hardware by purchasing
-products from Adafruit!
-
-Written by Limor Fried/Ladyada  for Adafruit Industries.
-BSD license, check license.txt for more information
-All text above, and the splash screen must be included in any redistribution
-*********************************************************************/
+***/
 
 #include <SPI.h>
+#include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_PCD8544.h>
-#include <TimerOne.h>
+#include <menu.h>
 #include <ClickEncoder.h>
+#include <menuIO/clickEncoderIn.h>
+#include <menuIO/keyIn.h>
+#include <menuIO/chainStream.h>
+#include <menuIO/serialOut.h>
+#include <menuIO/adafruitGfxOut.h>
+#include <menuIO/serialIn.h>
 
-#define ENC_A 13
-#define ENC_B 12
-#define ENC_BTN 3
+using namespace Menu;
 
+//PCD8544 aka nokia5110
 #define DISP_SCLK 11
 #define DISP_DIN 10
 #define DISP_DC 9
@@ -34,110 +34,189 @@ All text above, and the splash screen must be included in any redistribution
 
 #define DISP_CONTRAST 60
 
-int16_t oldEncPos, encPos;
-uint8_t buttonState;
-
-Adafruit_PCD8544 display = Adafruit_PCD8544(DISP_SCLK, DISP_DIN, DISP_DC, DISP_CS, DISP_RST);
-
-// Software SPI (slower updates, more flexible pin options):
-// pin 7 - Serial clock out (SCLK)
-// pin 6 - Serial data out (DIN)
-// pin 5 - Data/Command select (D/C)
-// pin 4 - LCD chip select (CS)
-// pin 3 - LCD reset (RST)
-// Adafruit_PCD8544 display = Adafruit_PCD8544(7, 6, 5, 4, 3);
-
-// Hardware SPI (faster, but must use certain hardware pins):
-// SCK is LCD serial clock (SCLK) - this is pin 13 on Arduino Uno
-// MOSI is LCD DIN - this is pin 11 on an Arduino Uno
-// pin 5 - Data/Command select (D/C)
-// pin 4 - LCD chip select (CS)
-// pin 3 - LCD reset (RST)
-// Adafruit_PCD8544 display = Adafruit_PCD8544(5, 4, 3);
-// Note with hardware SPI MISO and SS pins aren't used but will still be read
-// and written to during SPI transfer.  Be careful sharing these pins!
-
-#define NUMFLAKES 10
-#define XPOS 0
-#define YPOS 1
-#define DELTAY 2
+Adafruit_PCD8544 gfx = Adafruit_PCD8544(DISP_SCLK, DISP_DIN, DISP_DC, DISP_CS, DISP_RST);
 
 
-#define LOGO16_GLCD_HEIGHT 16
-#define LOGO16_GLCD_WIDTH  16
+#define LEDPIN A3
 
+// rotary encoder pins
+#define encA    12
+#define encB    13
+#define encBtn  3
 
+ClickEncoder clickEncoder(encA,encB,encBtn,2);
+ClickEncoderStream encStream(clickEncoder,1);
 
-
-void testdrawchar(void) {
-  display.setTextSize(1);
-  display.setTextColor(BLACK);
-  display.setCursor(0,0);
-
-  for (uint8_t i=0; i < 168; i++) {
-    if (i == '\n') continue;
-    display.write(i);
-    //if ((i > 0) && (i % 14 == 0))
-      //display.println();
-  }    
-  display.display();
+result showEvent(eventMask e,navNode& nav,prompt& item) {
+  Serial.print(F("event:"));
+  Serial.print(e);
+  return proceed;
 }
 
+int test=55;
+int ledCtrl=LOW;
 
-void setup()   {
-  Serial.begin(9600);
-  Serial.println("PCD test");
-  display.begin();
-  // init done
-
-  // you can change the contrast around to adapt the display
-  // for the best viewing!
-  display.setContrast(DISP_CONTRAST);
-  display.clearDisplay();   // clears the screen and buffer
-
-  // draw the first ~12 characters in the font
-  testdrawchar();
-  display.display();
-  delay(2000);
-  display.clearDisplay();
-
-  // text display tests
-  display.setTextSize(1);
-  display.setTextColor(BLACK);
-  display.setCursor(0,0);
-  display.println("Hello, world!");
-  display.setTextColor(WHITE, BLACK); // 'inverted' text
-  display.println(3.141592);
-  display.setTextSize(2);
-  display.setTextColor(BLACK);
-  display.print("0x"); display.println(0xDEADBEEF, HEX);
-  display.display();
-  delay(2000);
-
-  // rotation example
-  display.clearDisplay();
-  display.setRotation(1);  // rotate 90 degrees counter clockwise, can also use values of 2 and 3 to go further.
-  display.setTextSize(1);
-  display.setTextColor(BLACK);
-  display.setCursor(0,0);
-  display.println("Rotation");
-  display.setTextSize(2);
-  display.println("Example!");
-  display.display();
-  delay(2000);
-
-  // revert back to no rotation
-  display.setRotation(0);
-
-  // invert the display
-  display.invertDisplay(true);
-  delay(1000); 
-  display.invertDisplay(false);
-  delay(1000); 
-
+result myLedOn() {
+  ledCtrl=HIGH;
+  return proceed;
+}
+result myLedOff() {
+  ledCtrl=LOW;
+  return proceed;
 }
 
+result alert(menuOut& o,idleEvent e);
+result doAlert(eventMask e, prompt &item);
+
+TOGGLE(ledCtrl,setLed,"Led: ",doNothing,noEvent,noStyle//,doExit,enterEvent,noStyle
+  ,VALUE("On",HIGH,doNothing,noEvent)
+  ,VALUE("Off",LOW,doNothing,noEvent)
+);
+
+const char* constMEM hexDigit MEMMODE="0123456789ABCDEF";
+const char* constMEM hexNr[] MEMMODE={"0","x",hexDigit,hexDigit};
+char buf1[]="0x11";
+
+MENU(mainMenu,"Main menu",doNothing,noEvent,wrapStyle
+  ,FIELD(test,"Test","%",0,100,10,1,doNothing,noEvent,wrapStyle)
+  ,SUBMENU(setLed)
+  ,OP("LED On",myLedOn,enterEvent)
+  ,OP("LED Off",myLedOff,enterEvent)
+  ,OP("Alert test",doAlert,enterEvent)
+  ,EDIT("Hex",buf1,hexNr,doNothing,noEvent,noStyle)
+  ,EXIT("<Back")
+);
+
+// define menu colors --------------------------------------------------------
+//  {{disabled normal,disabled selected},{enabled normal,enabled selected, enabled editing}}
+//monochromatic color table
+const colorDef<uint16_t> colors[6] MEMMODE={
+  {{WHITE,BLACK},{WHITE,BLACK,BLACK}},//bgColor
+  {{BLACK,WHITE},{BLACK,WHITE,WHITE}},//fgColor
+  {{BLACK,WHITE},{BLACK,WHITE,WHITE}},//valColor
+  {{BLACK,WHITE},{BLACK,WHITE,WHITE}},//unitColor
+  {{BLACK,WHITE},{WHITE,WHITE,WHITE}},//cursorColor
+  {{BLACK,WHITE},{WHITE,BLACK,BLACK}},//titleColor
+};
+
+#define gfxWidth 84
+#define gfxHeight 48
+#define fontX 6
+//5
+#define fontY 9
+#define MAX_DEPTH 2
+
+
+//a keyboard with only one key as the encoder button
+
+keyMap encBtn_map[]={{-encBtn,defaultNavCodes[enterCmd].ch}};//negative pin numbers use internal pull-up, this is on when low
+keyIn<1> encButton(encBtn_map);//1 is the number of keys
+
+serialIn serial(Serial);
+MENU_INPUTS(in,&encStream,&encButton,&serial);
+
+#define MAX_DEPTH 2
+#define textScale 1
+MENU_OUTPUTS(out,MAX_DEPTH
+  ,ADAGFX_OUT(gfx,colors,fontX,fontY,{0,0,gfxWidth/fontX,gfxHeight/fontY})
+  ,SERIAL_OUT(Serial)
+);
+
+NAVROOT(nav,mainMenu,MAX_DEPTH,in,out);
+
+//initializing output and menu nav without macros
+/*const panel default_serial_panels[] MEMMODE={{0,0,40,10}};
+navNode* default_serial_nodes[sizeof(default_serial_panels)/sizeof(panel)];
+panelsList default_serial_panel_list(
+  default_serial_panels,
+  default_serial_nodes,
+  sizeof(default_serial_panels)/sizeof(panel)
+);
+
+//define output device
+idx_t serialTops[MAX_DEPTH]={0};
+serialOut outSerial(*(Print*)&Serial,serialTops);
+
+//define outputs controller
+idx_t gfx_tops[MAX_DEPTH];
+PANELS(gfxPanels,{0,0,gfxWidth/fontX,gfxHeight/fontY});
+adaGfxOut adaOut(gfx,colors,gfx_tops,gfxPanels);
+
+menuOut* const outputs[] MEMMODE={&outSerial,&adaOut};//list of output devices
+outputsList out(outputs,2);//outputs list controller
+
+//define input device
+serialIn serial(Serial);
+
+//define navigation root and aux objects
+navNode nav_cursors[MAX_DEPTH];//aux objects to control each level of navigation
+navRoot nav(mainMenu, nav_cursors, MAX_DEPTH, serial, out);*/
+
+result alert(menuOut& o,idleEvent e) {
+  if (e==idling) {
+    o.setCursor(0,0);
+    o.print(F("alert test"));
+    o.setCursor(0,1);
+    o.print(F("press [select]"));
+    o.setCursor(0,2);
+    o.print(F("to continue..."));
+  }
+  return proceed;
+}
+
+result doAlert(eventMask e, prompt &item) {
+  nav.idleOn(alert);
+  return proceed;
+}
+
+//when menu is suspended
+result idle(menuOut& o,idleEvent e) {
+  o.setCursor(0,0);
+  o.print(F("suspended..."));
+  o.setCursor(0,1);
+  o.print(F("press [select]"));
+  o.setCursor(0,2);
+  o.print(F("to continue"));
+  return proceed;
+}
+
+void setup() {
+  pinMode(LEDPIN,OUTPUT);
+  pinMode(encA,INPUT_PULLUP);
+  pinMode(encB,INPUT_PULLUP);
+  pinMode(encBtn,INPUT_PULLUP);
+  Serial.begin(115200);
+  while(!Serial);
+  Serial.println(F("menu 4.x test"));
+  Serial.flush();
+  nav.idleTask=idle;//point a function to be used when menu is suspended
+
+  encButton.begin();
+  
+  SPI.begin();
+  gfx.begin();
+  gfx.setContrast(DISP_CONTRAST);
+  gfx.setRotation(2);
+  gfx.clearDisplay();   // clears the screen and buffer
+  gfx.println(F("Menu 4.x test on GFX"));
+   gfx.display(); // show splashscreen
+  delay(2000);
+  gfx.clearDisplay();
+  gfx.display(); // show splashscreen
+  // gfx.drawRect(0, 0, 84, 48, 1);
+}
 
 void loop() {
-  
+  //nav.poll();//it can work like this, followed by the gfx.display()
+  //gfx.display();
+
+  //or on a need to draw basis:
+  nav.doInput();
+  if (nav.changed(0)) {//only draw if changed
+    nav.doOutput();
+    gfx.display();
+  }
+
+  digitalWrite(LEDPIN, ledCtrl);
+  delay(100);//simulate a delay when other tasks are done
 }
