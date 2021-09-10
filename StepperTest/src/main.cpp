@@ -40,9 +40,9 @@ Adafruit_PCD8544 gfx = Adafruit_PCD8544(DISP_SCLK, DISP_DIN, DISP_DC, DISP_CS, D
 #define LEDPIN A3
 
 // rotary encoder pins
-#define encA    12
-#define encB    13
-#define encBtn  3
+#define encA    13
+#define encB    12
+#define encBtn  5
 
 ClickEncoder clickEncoder(encA,encB,encBtn,2);
 ClickEncoderStream encStream(clickEncoder,1);
@@ -182,9 +182,6 @@ result idle(menuOut& o,idleEvent e) {
 
 void setup() {
   pinMode(LEDPIN,OUTPUT);
-  pinMode(encA,INPUT_PULLUP);
-  pinMode(encB,INPUT_PULLUP);
-  pinMode(encBtn,INPUT_PULLUP);
   Serial.begin(115200);
   while(!Serial);
   Serial.println(F("menu 4.x test"));
@@ -207,16 +204,14 @@ void setup() {
 }
 
 void loop() {
-  //nav.poll();//it can work like this, followed by the gfx.display()
-  //gfx.display();
+  nav.poll();//it can work like this, followed by the gfx.display()
+  gfx.display();
 
-  //or on a need to draw basis:
+/*   //or on a need to draw basis:
   nav.doInput();
   if (nav.changed(0)) {//only draw if changed
     nav.doOutput();
     gfx.display();
-  }
+  } */
 
-  digitalWrite(LEDPIN, ledCtrl);
-  delay(100);//simulate a delay when other tasks are done
 }
